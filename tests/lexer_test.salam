@@ -1,0 +1,53 @@
+include lexer "../src/lexer.salam"
+
+mut failures := 0
+
+func Expect(name: str, condition: bool): void:
+    if not condition:
+        println "FAIL: " + name
+        failures++
+    end
+end
+
+func main(): int:
+    Expect("blank", lexer.Classify("   \t ").kind == lexer.KIND_BLANK)
+    Expect("comment", lexer.Classify("  # note").kind == lexer.KIND_COMMENT)
+
+    plain := lexer.Classify("API_URL=https://example.test")
+    Expect("plain kind", plain.kind == lexer.KIND_ASSIGN)
+    Expect("plain key", plain.key == "API_URL")
+    Expect("plain not empty", not plain.empty)
+    Expect("plain no warning", plain.warning == "")
+
+    empty := lexer.Classify("TOKEN=")
+    Expect("empty value", empty.kind == lexer.KIND_ASSIGN and empty.empty)
+
+    exported := lexer.Classify("export  DEBUG=1")
+    Expect("export prefix", exported.exported and exported.key == "DEBUG")
+
+    quoted := lexer.Classify("NAME=\"two words\"  # shown in the header")
+    Expect("quoted", quoted.quoted and not quoted.empty and quoted.warning == "")
+    Expect("empty quotes", lexer.Classify("NAME=''").empty)
+    Expect("escaped quote", lexer.Classify("NAME=\"a \\\" b\"").kind == lexer.KIND_ASSIGN)
+    Expect("hash inside quotes", not lexer.Classify("COLOR='#fff'").empty)
+
+    Expect("no equals", lexer.Classify("JUSTAWORD").problem == "NO_EQUALS")
+    Expect("bad key digit", lexer.Classify("1ST=x").problem == "BAD_KEY")
+    Expect("bad key dash", lexer.Classify("MY-KEY=x").problem == "BAD_KEY")
+    Expect("unterminated", lexer.Classify("NAME=\"open").problem == "UNTERMINATED_QUOTE")
+    Expect("text after quote", lexer.Classify("NAME='a'b").problem == "TEXT_AFTER_QUOTE")
+
+    Expect("space around equals", lexer.Classify("KEY = value").warning == "SPACE_AROUND_EQUALS")
+    Expect("unquoted space", lexer.Classify("TITLE=My App").warning == "UNQUOTED_SPACE")
+    Expect("lowercase key", lexer.Classify("apiKey=x").warning == "LOWERCASE_KEY")
+    Expect("inline comment only", lexer.Classify("PORT= # fill me in").empty)
+    Expect("inline comment kept value", not lexer.Classify("PORT=8080 # http").empty)
+    Expect("inline comment no warning", lexer.Classify("PORT=8080 # http").warning == "")
+    Expect("hash without space is value", not lexer.Classify("COLOR=#fff").empty)
+
+    if failures > 0:
+        ret 1
+    end
+    println "PASS: lexer_test"
+    ret 0
+end
