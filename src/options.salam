@@ -1,0 +1,78 @@
+package options
+
+pub struct Options:
+    pub ok: bool = true
+    pub error: str = ""
+    pub example_path: str = ".env.example"
+    pub env_path: str = ".env"
+    pub strict: bool = false
+    pub format: str = "text"
+    pub help: bool = false
+    pub version: bool = false
+end
+
+func Fail(message: str): Options:
+    ret Options { ok = false, error = message }
+end
+
+func TakesValue(name: str): bool:
+    ret name == "--example" or name == "--env" or name == "--format"
+end
+
+func IsFlag(name: str): bool:
+    ret name == "--help" or name == "-h" or name == "--version" or name == "--strict"
+end
+
+// Parse the command line. args includes the program name at index 0.
+// Options that take a value accept both "--env PATH" and "--env=PATH".
+pub func Parse(args: Vector<str>): Options:
+    mut opts := Options {}
+    mut idx := 1
+    until idx < args.len():
+        mut name := args.get(idx)
+        mut value := ""
+        mut joined := false
+        sep := name.find("=")
+        if name.len() > 2 and name.substr(0, 2) == "--" and sep > 0:
+            value = name.substr(sep + 1, name.len() - sep - 1)
+            name = name.substr(0, sep)
+            joined = true
+        end
+        if IsFlag(name):
+            if joined:
+                ret Fail(name + " does not take a value")
+            end
+            if name == "--strict":
+                opts.strict = true
+            else name == "--version":
+                opts.version = true
+            else:
+                opts.help = true
+            end
+        else TakesValue(name):
+            if not joined:
+                idx++
+                if idx >= args.len():
+                    ret Fail(name + " needs a value")
+                end
+                value = args.get(idx)
+            end
+            if value.len() == 0:
+                ret Fail(name + " needs a value")
+            end
+            if name == "--example":
+                opts.example_path = value
+            else name == "--env":
+                opts.env_path = value
+            else value == "text" or value == "json":
+                opts.format = value
+            else:
+                ret Fail("--format must be text or json")
+            end
+        else:
+            ret Fail("unknown argument: " + name)
+        end
+        idx++
+    end
+    ret opts
+end

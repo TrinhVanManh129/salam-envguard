@@ -1,0 +1,58 @@
+include options "../src/options.salam"
+
+mut failures := 0
+
+func Expect(name: str, condition: bool): void:
+    if not condition:
+        println "FAIL: " + name
+        failures++
+    end
+end
+
+// Build an argument list; empty strings are skipped.
+func Args(a: str, b: str, c: str, d: str): Vector<str>:
+    mut list := Vector {} as Vector<str>
+    list.push("envguard")
+    if a.len() > 0:
+        list.push(a)
+    end
+    if b.len() > 0:
+        list.push(b)
+    end
+    if c.len() > 0:
+        list.push(c)
+    end
+    if d.len() > 0:
+        list.push(d)
+    end
+    ret list
+end
+
+func main(): int:
+    defaults := options.Parse(Args("", "", "", ""))
+    Expect("defaults ok", defaults.ok and defaults.example_path == ".env.example" and defaults.env_path == ".env")
+    Expect("defaults format", defaults.format == "text" and not defaults.strict)
+
+    spaced := options.Parse(Args("--env", "prod.env", "--example", "template.env"))
+    Expect("spaced values", spaced.ok and spaced.env_path == "prod.env" and spaced.example_path == "template.env")
+
+    joined := options.Parse(Args("--env=a=b.env", "--format=json", "--strict", ""))
+    Expect("joined env keeps later equals", joined.env_path == "a=b.env")
+    Expect("joined format and strict", joined.format == "json" and joined.strict)
+
+    Expect("help", options.Parse(Args("-h", "", "", "")).help)
+    Expect("version", options.Parse(Args("--version", "", "", "")).version)
+
+    Expect("missing value", options.Parse(Args("--env", "", "", "")).error == "--env needs a value")
+    Expect("empty joined value", options.Parse(Args("--env=", "", "", "")).error == "--env needs a value")
+    Expect("bad format", options.Parse(Args("--format", "xml", "", "")).error == "--format must be text or json")
+    Expect("unknown", options.Parse(Args("--nope", "", "", "")).error == "unknown argument: --nope")
+    Expect("flag with value", options.Parse(Args("--strict=yes", "", "", "")).error == "--strict does not take a value")
+    Expect("positional rejected", not options.Parse(Args("prod.env", "", "", "")).ok)
+
+    if failures > 0:
+        ret 1
+    end
+    println "PASS: options_test"
+    ret 0
+end
