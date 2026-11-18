@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  SALAM_VERSION: "0.6.16"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the Salam compiler
+        run: |
+          base="https://github.com/SalamLang/Salam/releases/download/v${SALAM_VERSION}"
+          file="salam-${SALAM_VERSION}-linux-x86_64.tar.gz"
+          curl -fsSL -O "$base/$file" -O "$base/$file.sha256"
+          sha256sum -c "$file.sha256"
+          mkdir -p "$RUNNER_TEMP/salam"
+          tar -xzf "$file" -C "$RUNNER_TEMP/salam"
+          echo "SALAM_BIN=$(find "$RUNNER_TEMP/salam" -type f -name salam | head -n 1)" >> "$GITHUB_ENV"
+      - name: Build, test and check the command line
+        run: |
+          "$SALAM_BIN" version
+          bash scripts/verify.sh
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t envguard .
+      - name: Clean example exits 0
+        run: docker run --rm -v "$PWD/examples/clean:/work" envguard
+      - name: Drifted example exits 1
+        run: |
+          status=0
+          docker run --rm -v "$PWD/examples/drift:/work" envguard || status=$?
+          test "$status" = 1
