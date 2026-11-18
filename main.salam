@@ -1,0 +1,24 @@
+import os
+
+func PrintUsage(): void:
+    println "envguard - compare a .env file against its .env.example"
+    println ""
+    println "usage: envguard [--example PATH] [--env PATH] [--strict] [--format text|json]"
+    println ""
+    println "  --example PATH   template file to check against (default: .env.example)"
+    println "  --env PATH       real environment file (default: .env)"
+    println "  --strict         treat warnings as errors"
+    println "  --format FORMAT  text (default) or json"
+    println "  --help           show this text"
+    println "  --version        show the version"
+    println ""
+    println "Values are never printed. Exit codes: 0 clean, 1 problems found,"
+    println "2 file could not be read, 64 bad command line."
+end
+
+func main(): int:
+    args := os.Args()
+    defer args.free()
+    PrintUsage()
+    ret 0
+end
