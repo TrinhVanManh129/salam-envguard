@@ -1,0 +1,32 @@
+package reader
+
+import os
+
+pub const MAX_BYTES := 1048576
+
+pub struct Result:
+    pub ok: bool = false
+    pub text: str = ""
+    pub error: str = ""
+end
+
+// Read a whole env file. Refuses directories, missing files and anything
+// larger than MAX_BYTES, so a wrong path fails loudly instead of slowly.
+pub func ReadText(path: str): Result:
+    mut result := Result {}
+    if not os.Exists(path):
+        result.error = "file not found"
+        ret result
+    end
+    if os.IsDir(path):
+        result.error = "path is a directory"
+        ret result
+    end
+    if os.FileSize(path) > (MAX_BYTES as i64):
+        result.error = "file is larger than 1 MiB"
+        ret result
+    end
+    result.text = os.ReadFile(path)
+    result.ok = true
+    ret result
+end
