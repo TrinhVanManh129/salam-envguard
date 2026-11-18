@@ -29,6 +29,13 @@ func main(): int:
     Expect("blank in template", compare.IsBlankInTemplate(example, "SENTRY_DSN"))
     Expect("not blank in template", not compare.IsBlankInTemplate(example, "PORT"))
 
+    partial := envfile.Parse("DB_HOST=x\nDB_PASS=y\nPORT=1\n", ".env")
+    optional := compare.Check(example, partial, ".env.example", ".env")
+    Expect("one optional issue", optional.len() == 1)
+    Expect("optional code", optional.get(0).code == "MISSING_OPTIONAL_KEY" and optional.get(0).key == "SENTRY_DSN")
+    Expect("optional is a warning", optional.get(0).severity == "warning")
+    Expect("optional detail", optional.get(0).detail == "listed on line 3 of .env.example with no value")
+
     same := compare.Check(example, example, "a", "b")
     Expect("identical files are clean", same.len() == 0)
 
