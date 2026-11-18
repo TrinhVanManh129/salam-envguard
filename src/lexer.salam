@@ -1,0 +1,148 @@
+package lexer
+
+import str
+
+pub const KIND_BLANK := 0
+pub const KIND_COMMENT := 1
+pub const KIND_ASSIGN := 2
+pub const KIND_INVALID := 3
+
+// The result of reading one line of an env file.
+// problem is set when kind is KIND_INVALID; warning may be set on a valid
+// assignment that is legal but likely to surprise a shell or a dotenv loader.
+pub struct Line:
+    pub kind: int = 0
+    pub key: str = ""
+    pub empty: bool = true
+    pub quoted: bool = false
+    pub exported: bool = false
+    pub problem: str = ""
+    pub warning: str = ""
+end
+
+func IsSpace(ch: str): bool:
+    ret ch == " " or ch == "\t"
+end
+
+func Trim(text: str): str:
+    ret str.TrimLeft(str.TrimRight(text))
+end
+
+func HasLowercase(key: str): bool:
+    repeat key.len() in idx:
+        if "abcdefghijklmnopqrstuvwxyz".find(key.substr(idx, 1)) >= 0:
+            ret true
+        end
+    end
+    ret false
+end
+
+// Position of the quote that closes a value opened at index 0, or -1.
+// Inside double quotes a backslash escapes the next character.
+func ClosingQuote(value: str, quote: str): int:
+    mut idx := 1
+    until idx < value.len():
+        ch := value.substr(idx, 1)
+        if quote == "\"" and ch == "\\":
+            idx += 2
+        else ch == quote:
+            ret idx
+        else:
+            idx++
+        end
+    end
+    ret -1
+end
+
+// Cut an unquoted value at an inline comment (a '#' preceded by a space).
+func StripInlineComment(value: str): str:
+    mut idx := 1
+    until idx < value.len():
+        if value.substr(idx, 1) == "#" and IsSpace(value.substr(idx - 1, 1)):
+            ret value.substr(0, idx)
+        end
+        idx++
+    end
+    ret value
+end
+
+func Invalid(problem: str): Line:
+    ret Line { kind = KIND_INVALID, problem = problem }
+end
+
+pub func ValidKey(key: str): bool:
+    if key.len() == 0:
+        ret false
+    end
+    first := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
+    rest := first + "0123456789"
+    if first.find(key.substr(0, 1)) < 0:
+        ret false
+    end
+    repeat key.len() in idx:
+        if rest.find(key.substr(idx, 1)) < 0:
+            ret false
+        end
+    end
+    ret true
+end
+
+pub func Classify(raw: str): Line:
+    mut text := Trim(raw)
+    if text.len() == 0:
+        ret Line { kind = KIND_BLANK }
+    end
+    if text.substr(0, 1) == "#":
+        ret Line { kind = KIND_COMMENT }
+    end
+    mut line := Line { kind = KIND_ASSIGN }
+    if text.len() > 7 and text.substr(0, 6) == "export" and IsSpace(text.substr(6, 1)):
+        line.exported = true
+        text = Trim(text.substr(7, text.len() - 7))
+    end
+    sep := text.find("=")
+    if sep < 0:
+        ret Invalid("NO_EQUALS")
+    end
+    raw_key := text.substr(0, sep)
+    key := Trim(raw_key)
+    if not ValidKey(key):
+        ret Invalid("BAD_KEY")
+    end
+    line.key = key
+    raw_value := text.substr(sep + 1, text.len() - sep - 1)
+    mut value := Trim(raw_value)
+    quoted := value.len() > 0 and (value.substr(0, 1) == "\"" or value.substr(0, 1) == "'")
+    if not quoted:
+        value = Trim(StripInlineComment(raw_value))
+    end
+    space_after := value.len() > 0 and IsSpace(raw_value.substr(0, 1))
+    if raw_key.len() != key.len() or space_after:
+        line.warning = "SPACE_AROUND_EQUALS"
+    end
+    if value.len() == 0:
+        ret line
+    end
+    if quoted:
+        opener := value.substr(0, 1)
+        close := ClosingQuote(value, opener)
+        if close < 0:
+            ret Invalid("UNTERMINATED_QUOTE")
+        end
+        tail := Trim(value.substr(close + 1, value.len() - close - 1))
+        if tail.len() > 0 and tail.substr(0, 1) != "#":
+            ret Invalid("TEXT_AFTER_QUOTE")
+        end
+        line.quoted = true
+        line.empty = close == 1
+    else:
+        line.empty = false
+        if line.warning.len() == 0 and (value.find(" ") >= 0 or value.find("	") >= 0):
+            line.warning = "UNQUOTED_SPACE"
+        end
+    end
+    if line.warning.len() == 0 and HasLowercase(key):
+        line.warning = "LOWERCASE_KEY"
+    end
+    ret line
+end
