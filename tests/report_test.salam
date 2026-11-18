@@ -1,0 +1,62 @@
+include model "../src/model.salam"
+include report "../src/report.salam"
+
+mut failures := 0
+
+func Expect(name: str, got: str, want: str): void:
+    if got != want:
+        println "FAIL: " + name
+        println "  got:  " + got
+        println "  want: " + want
+        failures++
+    end
+end
+
+func ExpectTrue(name: str, condition: bool): void:
+    if not condition:
+        println "FAIL: " + name
+        failures++
+    end
+end
+
+func main(): int:
+    mut issues := Vector {} as Vector<model.Issue>
+    issues.push(
+        model.Issue { code = "MISSING_KEY", severity = "error", file = ".env", key = "PORT", detail = "listed on line 4 of .env.example" }
+    )
+    issues.push(
+        model.Issue { code = "EXTRA_KEY", severity = "warning", file = ".env", line = 9, key = "OLD", detail = "not documented in .env.example" }
+    )
+    issues.push(
+        model.Issue { code = "NO_EQUALS", severity = "error", file = ".env", line = 3, detail = "line is not a KEY=value assignment" }
+    )
+
+    Expect("line without number", report.TextLine(issues.get(0)), ".env: error MISSING_KEY PORT - listed on line 4 of .env.example")
+    Expect("line with number", report.TextLine(issues.get(1)), ".env:9: warning EXTRA_KEY OLD - not documented in .env.example")
+    Expect("line without key", report.TextLine(issues.get(2)), ".env:3: error NO_EQUALS - line is not a KEY=value assignment")
+
+    ExpectTrue("error count", report.Count(issues, "error") == 2)
+    ExpectTrue("warning count", report.Count(issues, "warning") == 1)
+    Expect("summary", report.Summary(issues, 7), "2 errors, 1 warning (7 keys checked)")
+
+    promoted := report.Promote(issues)
+    ExpectTrue("promote", report.Count(promoted, "error") == 3 and report.Count(promoted, "warning") == 0)
+    ExpectTrue("promote leaves input alone", report.Count(issues, "warning") == 1)
+
+    none := Vector {} as Vector<model.Issue>
+    Expect("clean summary", report.Summary(none, 1), "ok: 1 key checked, no problems")
+    Expect("clean json", report.Json(none, "a", "b", 0), "{\"example\":\"a\",\"env\":\"b\",\"keys_checked\":0,\"errors\":0,\"warnings\":0,\"issues\":[]}")
+
+    mut one := Vector {} as Vector<model.Issue>
+    one.push(issues.get(1))
+    Expect(
+        "json with issue", report.Json(one, ".env.example", ".env", 2),
+        "{\"example\":\".env.example\",\"env\":\".env\",\"keys_checked\":2,\"errors\":0,\"warnings\":1,\"issues\":[{\"code\":\"EXTRA_KEY\",\"severity\":\"warning\",\"file\":\".env\",\"line\":9,\"key\":\"OLD\",\"detail\":\"not documented in .env.example\"}]}"
+    )
+
+    if failures > 0:
+        ret 1
+    end
+    println "PASS: report_test"
+    ret 0
+end

@@ -1,0 +1,78 @@
+package report
+
+import str
+
+include json "json.salam"
+include model "model.salam"
+
+func Plural(count: int, word: str): str:
+    if count == 1:
+        ret "1 " + word
+    end
+    ret str.FromInt(count as i64) + " " + word + "s"
+end
+
+// Turn every warning into an error. Used by --strict.
+pub func Promote(issues: Vector<model.Issue>): Vector<model.Issue>:
+    mut promoted := Vector {} as Vector<model.Issue>
+    repeat issues.len() in idx:
+        mut issue := issues.get(idx)
+        issue.severity = "error"
+        promoted.push(issue)
+    end
+    ret promoted
+end
+
+pub func Count(issues: Vector<model.Issue>, severity: str): int:
+    mut total := 0
+    repeat issues.len() in idx:
+        if issues.get(idx).severity == severity:
+            total++
+        end
+    end
+    ret total
+end
+
+// One line per issue in the "file:line: severity CODE KEY - detail" shape
+// that editors and CI log viewers already know how to link.
+pub func TextLine(issue: model.Issue): str:
+    mut where := issue.file
+    if issue.line > 0:
+        where = where + ":" + str.FromInt(issue.line as i64)
+    end
+    mut subject := issue.code
+    if issue.key.len() > 0:
+        subject = subject + " " + issue.key
+    end
+    ret where + ": " + issue.severity + " " + subject + " - " + issue.detail
+end
+
+pub func Summary(issues: Vector<model.Issue>, keys_checked: int): str:
+    errors := Count(issues, "error")
+    warnings := Count(issues, "warning")
+    if errors == 0 and warnings == 0:
+        ret "ok: " + Plural(keys_checked, "key") + " checked, no problems"
+    end
+    ret Plural(errors, "error") + ", " + Plural(warnings, "warning") + " (" + Plural(keys_checked, "key") + " checked)"
+end
+
+pub func Json(issues: Vector<model.Issue>, example_label: str, env_label: str, keys_checked: int): str:
+    mut out := str.NewBuilder()
+    defer str.BufFree(out)
+    str.BufAppend(out, "{" + json.Field("example", example_label) + "," + json.Field("env", env_label))
+    str.BufAppend(out, "," + json.NumberField("keys_checked", keys_checked))
+    str.BufAppend(out, "," + json.NumberField("errors", Count(issues, "error")))
+    str.BufAppend(out, "," + json.NumberField("warnings", Count(issues, "warning")))
+    str.BufAppend(out, "," + json.Quote("issues") + ":[")
+    repeat issues.len() in idx:
+        issue := issues.get(idx)
+        if idx > 0:
+            str.BufAppend(out, ",")
+        end
+        str.BufAppend(out, "{" + json.Field("code", issue.code) + "," + json.Field("severity", issue.severity))
+        str.BufAppend(out, "," + json.Field("file", issue.file) + "," + json.NumberField("line", issue.line))
+        str.BufAppend(out, "," + json.Field("key", issue.key) + "," + json.Field("detail", issue.detail) + "}")
+    end
+    str.BufAppend(out, "]}")
+    ret str.Clone(str.BufStr(out))
+end
