@@ -1,5 +1,19 @@
 import os
 
+include compare "src/compare.salam"
+include envfile "src/envfile.salam"
+include model "src/model.salam"
+include options "src/options.salam"
+include reader "src/reader.salam"
+include report "src/report.salam"
+
+const VERSION := "0.1.0"
+
+const EXIT_CLEAN := 0
+const EXIT_PROBLEMS := 1
+const EXIT_UNREADABLE := 2
+const EXIT_USAGE := 64
+
 func PrintUsage(): void:
     println "envguard - compare a .env file against its .env.example"
     println ""
@@ -16,9 +30,64 @@ func PrintUsage(): void:
     println "2 file could not be read, 64 bad command line."
 end
 
+func AddAll(target &: Vector<model.Issue>, source: Vector<model.Issue>): void:
+    repeat source.len() in idx:
+        target.push(source.get(idx))
+    end
+end
+
 func main(): int:
     args := os.Args()
     defer args.free()
-    PrintUsage()
-    ret 0
+    opts := options.Parse(args)
+    if not opts.ok:
+        println "envguard: " + opts.error
+        println "Try 'envguard --help'."
+        ret EXIT_USAGE
+    end
+    if opts.help:
+        PrintUsage()
+        ret EXIT_CLEAN
+    end
+    if opts.version:
+        println "envguard " + VERSION
+        ret EXIT_CLEAN
+    end
+
+    example_text := reader.ReadText(opts.example_path)
+    if not example_text.ok:
+        println "envguard: " + opts.example_path + ": " + example_text.error
+        ret EXIT_UNREADABLE
+    end
+    env_text := reader.ReadText(opts.env_path)
+    if not env_text.ok:
+        println "envguard: " + opts.env_path + ": " + env_text.error
+        ret EXIT_UNREADABLE
+    end
+
+    example := envfile.Parse(example_text.text, opts.example_path)
+    actual := envfile.Parse(env_text.text, opts.env_path)
+
+    mut issues := Vector {} as Vector<model.Issue>
+    AddAll(issues, example.issues)
+    AddAll(issues, actual.issues)
+    AddAll(issues, compare.Check(example, actual, opts.example_path, opts.env_path))
+    if opts.strict:
+        issues = report.Promote(issues)
+    end
+
+    keys_checked := example.entries.len()
+    if opts.format == "json":
+        println report.Json(issues, opts.example_path, opts.env_path, keys_checked)
+    else:
+        repeat issues.len() in idx:
+            println report.TextLine(issues.get(idx))
+        end
+        println report.Summary(issues, keys_checked)
+    end
+
+    if report.Count(issues, "error") > 0:
+        ret EXIT_PROBLEMS
+    end
+    ret EXIT_CLEAN
 end
