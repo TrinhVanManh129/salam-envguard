@@ -1,0 +1,45 @@
+package json
+
+import str
+
+func HexDigit(value: int): str:
+    ret "0123456789abcdef".substr(value, 1)
+end
+
+// Quote text as a JSON string, escaping quotes, backslashes and control
+// characters. Everything else, including non-ASCII text, passes through.
+pub func Quote(text: str): str:
+    points := str.CodePoints(text)
+    defer points.free()
+    mut out := str.NewBuilder()
+    defer str.BufFree(out)
+    str.BufAppend(out, "\"")
+    repeat points.len() in idx:
+        cp := points.get(idx)
+        if cp == 34:
+            str.BufAppend(out, "\\\"")
+        else cp == 92:
+            str.BufAppend(out, "\\\\")
+        else cp == 10:
+            str.BufAppend(out, "\\n")
+        else cp == 13:
+            str.BufAppend(out, "\\r")
+        else cp == 9:
+            str.BufAppend(out, "\\t")
+        else cp < 32:
+            str.BufAppend(out, "\\u00" + HexDigit(cp / 16) + HexDigit(cp % 16))
+        else:
+            str.BufAppendCp(out, cp)
+        end
+    end
+    str.BufAppend(out, "\"")
+    ret str.Clone(str.BufStr(out))
+end
+
+pub func Field(name: str, value: str): str:
+    ret Quote(name) + ":" + Quote(value)
+end
+
+pub func NumberField(name: str, value: int): str:
+    ret Quote(name) + ":" + str.FromInt(value as i64)
+end

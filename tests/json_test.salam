@@ -1,0 +1,27 @@
+include json "../src/json.salam"
+
+mut failures := 0
+
+func Expect(name: str, got: str, want: str): void:
+    if got != want:
+        println "FAIL: " + name + " got " + got + " want " + want
+        failures++
+    end
+end
+
+func main(): int:
+    Expect("plain", json.Quote("DB_HOST"), "\"DB_HOST\"")
+    Expect("empty", json.Quote(""), "\"\"")
+    Expect("quote", json.Quote("say \"hi\""), "\"say \\\"hi\\\"\"")
+    Expect("backslash", json.Quote("C:\\app\\.env"), "\"C:\\\\app\\\\.env\"")
+    Expect("newline and tab", json.Quote("a\nb\tc\r"), "\"a\\nb\\tc\\r\"")
+    Expect("non-ascii kept", json.Quote("سلام"), "\"سلام\"")
+    Expect("field", json.Field("key", "PORT"), "\"key\":\"PORT\"")
+    Expect("number field", json.NumberField("line", 12), "\"line\":12")
+
+    if failures > 0:
+        ret 1
+    end
+    println "PASS: json_test"
+    ret 0
+end
