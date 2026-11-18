@@ -1,0 +1,61 @@
+package compare
+
+import str
+
+include envfile "envfile.salam"
+include model "model.salam"
+
+pub func IsBlankInTemplate(example: envfile.Parsed, key: str): bool:
+    repeat example.entries.len() in idx:
+        entry := example.entries.get(idx)
+        if entry.key == key:
+            ret entry.empty
+        end
+    end
+    ret false
+end
+
+// Compare the real file against the template.
+//
+//   MISSING_KEY  the template lists a key the real file does not define
+//   EMPTY_VALUE  the template gives a sample value but the real one is blank
+//   EXTRA_KEY    the real file defines a key the template does not document
+//
+// A key left blank in the template is treated as optional, so a blank real
+// value for it is not reported. Missing keys are errors; the other two are
+// warnings, which --strict turns into errors later.
+pub func Check(example: envfile.Parsed, actual: envfile.Parsed, example_label: str, actual_label: str): Vector<model.Issue>:
+    mut issues := Vector {} as Vector<model.Issue>
+    repeat example.entries.len() in idx:
+        wanted := example.entries.get(idx)
+        found := envfile.FirstLine(actual.entries, wanted.key)
+        if found == 0:
+            issues.push(
+                model.Issue {
+                    code = "MISSING_KEY", severity = "error", file = actual_label, key = wanted.key,
+                    detail = "listed on line " + str.FromInt(wanted.line as i64) + " of " + example_label
+                }
+            )
+        end
+    end
+    repeat actual.entries.len() in idx:
+        have := actual.entries.get(idx)
+        template_line := envfile.FirstLine(example.entries, have.key)
+        if template_line == 0:
+            issues.push(
+                model.Issue {
+                    code = "EXTRA_KEY", severity = "warning", file = actual_label, line = have.line,
+                    key = have.key, detail = "not documented in " + example_label
+                }
+            )
+        else have.empty and not IsBlankInTemplate(example, have.key):
+            issues.push(
+                model.Issue {
+                    code = "EMPTY_VALUE", severity = "warning", file = actual_label, line = have.line,
+                    key = have.key, detail = "has no value, but " + example_label + " gives one"
+                }
+            )
+        end
+    end
+    ret issues
+end

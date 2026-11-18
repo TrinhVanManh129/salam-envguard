@@ -1,0 +1,40 @@
+include compare "../src/compare.salam"
+include envfile "../src/envfile.salam"
+
+mut failures := 0
+
+func Expect(name: str, condition: bool): void:
+    if not condition:
+        println "FAIL: " + name
+        failures++
+    end
+end
+
+func main(): int:
+    example := envfile.Parse("DB_HOST=localhost\nDB_PASS=change-me\nSENTRY_DSN=\nPORT=8080\n", ".env.example")
+    actual := envfile.Parse("DB_HOST=db.internal\nDB_PASS=\nSENTRY_DSN=\nLEGACY_FLAG=1\n", ".env")
+
+    issues := compare.Check(example, actual, ".env.example", ".env")
+    Expect("three issues", issues.len() == 3)
+    missing := issues.get(0)
+    Expect("missing key", missing.code == "MISSING_KEY" and missing.key == "PORT" and missing.severity == "error")
+    Expect("missing detail", missing.detail == "listed on line 4 of .env.example")
+    empty := issues.get(1)
+    Expect("empty value", empty.code == "EMPTY_VALUE" and empty.key == "DB_PASS" and empty.line == 2)
+    Expect("empty is a warning", empty.severity == "warning")
+    extra := issues.get(2)
+    Expect("extra is a warning", extra.severity == "warning")
+    Expect("extra key", extra.code == "EXTRA_KEY" and extra.key == "LEGACY_FLAG" and extra.line == 4)
+
+    Expect("blank in template", compare.IsBlankInTemplate(example, "SENTRY_DSN"))
+    Expect("not blank in template", not compare.IsBlankInTemplate(example, "PORT"))
+
+    same := compare.Check(example, example, "a", "b")
+    Expect("identical files are clean", same.len() == 0)
+
+    if failures > 0:
+        ret 1
+    end
+    println "PASS: compare_test"
+    ret 0
+end
