@@ -1,0 +1,90 @@
+package envfile
+
+import str
+
+include lexer "lexer.salam"
+include model "model.salam"
+
+pub struct Parsed:
+    pub entries: Vector<model.Entry> = Vector {} as Vector<model.Entry>
+    pub issues: Vector<model.Issue> = Vector {} as Vector<model.Issue>
+end
+
+func StripCr(line: str): str:
+    if line.len() > 0 and line.substr(line.len() - 1, 1) == "\r":
+        ret line.substr(0, line.len() - 1)
+    end
+    ret line
+end
+
+func Describe(code: str): str:
+    if code == "NO_EQUALS":
+        ret "line is not a KEY=value assignment"
+    else code == "BAD_KEY":
+        ret "key must start with a letter or underscore and use only letters, digits and underscores"
+    else code == "UNTERMINATED_QUOTE":
+        ret "quoted value is never closed"
+    else code == "TEXT_AFTER_QUOTE":
+        ret "unexpected text after the closing quote"
+    else code == "SPACE_AROUND_EQUALS":
+        ret "spaces around '=' are read differently by shells and dotenv loaders"
+    else code == "UNQUOTED_SPACE":
+        ret "value contains a space but is not quoted"
+    else code == "LOWERCASE_KEY":
+        ret "key is not UPPER_SNAKE_CASE"
+    end
+    ret code
+end
+
+// Line of the first entry with this key, or 0 when it has not been seen.
+pub func FirstLine(entries: Vector<model.Entry>, key: str): int:
+    repeat entries.len() in idx:
+        entry := entries.get(idx)
+        if entry.key == key:
+            ret entry.line
+        end
+    end
+    ret 0
+end
+
+// Parse the text of one env file. label is the name used in reports.
+pub func Parse(text: str, label: str): Parsed:
+    mut parsed := Parsed {}
+    lines := text.split("\n")
+    defer lines.free()
+    repeat lines.len() in idx:
+        number := idx + 1
+        line := lexer.Classify(StripCr(lines.get(idx)))
+        if line.kind == lexer.KIND_INVALID:
+            parsed.issues.push(
+                model.Issue {
+                    code = line.problem, severity = "error", file = label, line = number,
+                    detail = Describe(line.problem)
+                }
+            )
+        else line.kind == lexer.KIND_ASSIGN:
+            if line.warning.len() > 0:
+                parsed.issues.push(
+                    model.Issue {
+                        code = line.warning, severity = "warning", file = label, line = number,
+                        key = line.key, detail = Describe(line.warning)
+                    }
+                )
+            end
+            first := FirstLine(parsed.entries, line.key)
+            if first > 0:
+                parsed.issues.push(
+                    model.Issue {
+                        code = "DUPLICATE_KEY", severity = "error", file = label, line = number,
+                        key = line.key, detail = "already defined on line " + str.FromInt(first as i64)
+                    }
+                )
+            else:
+                parsed.entries.push(
+                    model.Entry { key = line.key, line = number, empty = line.empty, quoted = line.quoted }
+                )
+            end
+        end
+    end
+    ret parsed
+end

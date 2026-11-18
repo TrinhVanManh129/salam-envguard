@@ -1,0 +1,40 @@
+include envfile "../src/envfile.salam"
+
+mut failures := 0
+
+func Expect(name: str, condition: bool): void:
+    if not condition:
+        println "FAIL: " + name
+        failures++
+    end
+end
+
+func main(): int:
+    text := "# database\r\nDB_HOST=localhost\r\nDB_PASS=\r\n\r\nexport DEBUG=1\r\nDB_HOST=other\r\nnot an assignment\r\nTITLE=My App\r\n"
+    parsed := envfile.Parse(text, ".env")
+    Expect("entry count", parsed.entries.len() == 4)
+    Expect("first key", parsed.entries.get(0).key == "DB_HOST")
+    Expect("first line", parsed.entries.get(0).line == 2)
+    Expect("crlf does not leak into value", parsed.entries.get(1).empty)
+    Expect("export line", parsed.entries.get(2).key == "DEBUG" and parsed.entries.get(2).line == 5)
+    Expect("issue count", parsed.issues.len() == 3)
+    dup := parsed.issues.get(0)
+    Expect("duplicate code", dup.code == "DUPLICATE_KEY" and dup.line == 6 and dup.key == "DB_HOST")
+    Expect("duplicate detail", dup.detail == "already defined on line 2")
+    Expect("invalid line", parsed.issues.get(1).code == "NO_EQUALS" and parsed.issues.get(1).line == 7)
+    warn := parsed.issues.get(2)
+    Expect("warning", warn.code == "UNQUOTED_SPACE" and warn.severity == "warning" and warn.file == ".env")
+    Expect("first line lookup", envfile.FirstLine(parsed.entries, "DEBUG") == 5)
+    Expect("missing lookup", envfile.FirstLine(parsed.entries, "NOPE") == 0)
+
+    blank := envfile.Parse("", ".env")
+    Expect("empty file", blank.entries.len() == 0 and blank.issues.len() == 0)
+    no_newline := envfile.Parse("A=1", ".env")
+    Expect("no trailing newline", no_newline.entries.len() == 1)
+
+    if failures > 0:
+        ret 1
+    end
+    println "PASS: envfile_test"
+    ret 0
+end
