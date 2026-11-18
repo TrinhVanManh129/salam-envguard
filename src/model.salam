@@ -1,0 +1,20 @@
+package model
+
+// One KEY=value assignment found in an env file. The value itself is never
+// stored: envguard only needs to know whether one was given.
+pub struct Entry:
+    pub key: str = ""
+    pub line: int = 0
+    pub empty: bool = true
+    pub quoted: bool = false
+end
+
+// A problem to report. severity is "error" or "warning".
+pub struct Issue:
+    pub code: str = ""
+    pub severity: str = "error"
+    pub file: str = ""
+    pub line: int = 0
+    pub key: str = ""
+    pub detail: str = ""
+end
